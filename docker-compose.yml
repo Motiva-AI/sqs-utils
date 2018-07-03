@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  sqs:
+    image: expert360/elasticmq
+    ports:
+      - "9324:9324"
