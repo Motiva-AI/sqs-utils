@@ -1,4 +1,4 @@
-(defproject motiva/sqs-utils "0.2.0-SNAPSHOT"
+(defproject motiva/sqs-utils "0.2.0"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
   :license {:name "Proprietary" :url "https://motiva.ai"}
@@ -27,7 +27,7 @@
 
                    :plugins [[s3-wagon-private "1.3.1"]
                              [test2junit "1.3.3"]
-                             [lein-eftest "0.5.1"]
+                             [lein-eftest "0.5.2"]
                              [lein-codox "0.10.3"]
                              [lein-environ "1.1.0"]]
 
