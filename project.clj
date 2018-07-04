@@ -1,4 +1,4 @@
-(defproject motiva/sqs-utils "0.3.0-SNAPSHOT"
+(defproject motiva/sqs-utils "0.2.1"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
   :license {:name "Proprietary" :url "https://motiva.ai"}
@@ -40,6 +40,10 @@
                          :sqs-region            "us-east-2"
                          :aws-access-key-id     "local"
                          :aws-secret-access-key "local"}}}
+
+  :test-selectors {:default     (complement :integration)
+                   :integration :integration
+                   :all         (constantly true)}
 
   :repositories {"private" {:url           "s3p://maven-private-repo/releases/"
                             :no-auth       true
