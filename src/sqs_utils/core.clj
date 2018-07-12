@@ -150,8 +150,8 @@
        ;; return a kill function
        stop-loop))))
 
-(defn send-message
-  "Send a message to a standard queue."
+(defn send-message*
+  "Send a message to a queue."
   [sqs-config queue-url payload & {:keys [group-id]}]
   (let [resp (<!! (sqs/send-message!
                     sqs-config
@@ -163,12 +163,18 @@
       (throw resp)
       resp)))
 
+(defn send-message
+  "Send a message to a standard queue."
+  [sqs-config queue-url payload]
+  ;; Note that standard queues don't support message-group-id
+  (send-message* sqs-config queue-url payload))
+
 (defn send-fifo-message
   "Send a message to a FIFO queue. message-group-id is a tag that specifies the
   group that this message belongs to. Messages belonging to the same group are
   guaranteed FIFO."
   [sqs-config queue-url message-group-id payload]
-  (send-message sqs-config queue-url payload :group-id message-group-id))
+  (send-message* sqs-config queue-url payload :group-id message-group-id))
 
 ;; Controls ;;;;;;;;;;;;;;;;;
 
