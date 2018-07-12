@@ -18,10 +18,10 @@
    :region     "us-west-2"})
 
 (def standard-queue-url
-  "https://sqs.us-west-2.amazonaws.com/658488433453/standard_integration_test")
+  (env/env :standard-integration-test-queue-url))
 
 (def fifo-queue-url
-  "https://sqs.us-west-2.amazonaws.com/658488433453/fifo_integration_test.fifo")
+  (env/env :fifo-integration-test-queue-url))
 
 (deftest ^:integration receive-one-test
   (testing "standard queue"
