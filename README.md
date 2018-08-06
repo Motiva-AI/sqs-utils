@@ -64,4 +64,6 @@ There are also some utilities for use in tests - see the `sqs-utils.test-utils` 
 
 ## License
 
-Copyright © 2018 Motiva Inc
+The MIT License (MIT)
+
+Copyright © 2018 Motiva AI

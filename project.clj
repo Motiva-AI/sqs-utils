@@ -1,7 +1,8 @@
 (defproject motiva/sqs-utils "0.2.2"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
-  :license {:name "Proprietary" :url "https://motiva.ai"}
+  :license {:name "MIT License"
+            :url "https://opensource.org/licenses/MIT"}
 
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [org.clojure/core.async "0.4.474"]
