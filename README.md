@@ -1,6 +1,9 @@
 # sqs-utils
 
+[![CircleCI](https://circleci.com/gh/Motiva-AI/sqs-utils/tree/master.svg?style=svg)](https://circleci.com/gh/Motiva-AI/sqs-utils/tree/master)
+
 A library of high level tools for working with AWS SQS queues.
+
 
 ## Usage
 
@@ -61,6 +64,12 @@ sqs-utils.core/send-fifo-message
 ```
 
 There are also some utilities for use in tests - see the `sqs-utils.test-utils` namespace for details.
+
+## Latest Version
+
+The latest release version of sqs-utils is hosted on [Clojars](https://clojars.org):
+
+[![Current Version](https://clojars.org/motiva/sqs-utils/latest-version.svg)](https://clojars.org/motiva/sqs-utils)
 
 ## License
 
