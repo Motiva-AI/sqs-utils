@@ -46,11 +46,10 @@
                    :integration :integration
                    :all         (constantly true)}
 
-  :repositories {"private" {:url           "s3p://maven-private-repo/releases/"
-                            :no-auth       true
-                            :sign-releases false}
-                 "releases" {:url "https://clojars.org/repo"
-                             :username "motiva"
-                             :password :env
-                             :sign-releases false}}
-  :deploy-repositories [["releases" :clojars]])
+  :repositories [["private" {:url           "s3p://maven-private-repo/releases/"
+                             :no-auth       true
+                             :sign-releases false}]
+                 ["releases" {:url           "https://clojars.org/repo"
+                              :username      "motiva-ai"
+                              :password      :env
+                              :sign-releases false}]])

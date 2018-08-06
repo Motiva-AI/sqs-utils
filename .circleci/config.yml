@@ -60,5 +60,5 @@ jobs:
           name: Publish to Clojars
           command: |
             if [ "${CIRCLE_BRANCH}" == "master" ]; then
-                lein deploy
+                lein deploy releases
             fi
