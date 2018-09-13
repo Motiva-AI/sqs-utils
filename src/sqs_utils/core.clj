@@ -51,9 +51,10 @@
   ([sqs-config queue-url out-chan]
    (receive-loop! sqs-config queue-url out-chan {}))
 
-  ([sqs-config queue-url out-chan {:keys [auto-delete visibility-timeout]
-                                   :or   {auto-delete        true
-                                          visibility-timeout 60}
+  ([sqs-config queue-url out-chan {:keys [auto-delete visibility-timeout restart-delay-seconds]
+                                   :or   {auto-delete           true
+                                          visibility-timeout    60
+                                          restart-delay-seconds 1}
                                    :as   opts}]
    (let [loop-state (atom {:messages
                            (sqs.channeled/receive!
@@ -124,6 +125,10 @@
                  (log/warn message "Received an error from fink-nottle"
                            (assoc stats :last-wait-duration (secs-between this-pass-started-at
                                                                           (t/now))))
+                 ;; Adding a restart delay so that this doesn't go into an
+                 ;; infinite loop if the queue listener is failing to start
+                 ;; continuously.
+                 (<! (async/timeout (int (* restart-delay-seconds 1000))))
                  (restart-loop))
 
                ;; it's a well formed actionable message
