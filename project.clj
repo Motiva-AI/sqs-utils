@@ -9,8 +9,8 @@
                  [io.nervous/fink-nottle "0.4.7"]
                  [org.clojure/tools.logging "0.4.1"]
                  [clj-time "0.14.4"]
-                 [cheshire "5.8.0"]                     ;; json
-                 [com.cognitect/transit-clj "0.8.309"]] ;; ser/de
+                 [cheshire "5.8.1"]                     ;; json
+                 [com.cognitect/transit-clj "0.8.313"]] ;; ser/de
 
   :repl-options {:init-ns user
                  :timeout 120000}
@@ -20,16 +20,16 @@
                    :resource-paths ["resources" "dev/resources"]
 
                    :dependencies [[circleci/bond "0.3.1"]
-                                  [eftest "0.5.2"]
+                                  [eftest "0.5.3"]
                                   [org.clojure/tools.namespace "0.2.11"]
                                   [viebel/codox-klipse-theme "0.0.5"]
-                                  [motiva/wait-for "0.1.0"]
+                                  [motiva/wait-for "0.3.0"]
                                   [environ "1.1.0"]]
 
-                   :plugins [[s3-wagon-private "1.3.1"]
-                             [test2junit "1.3.3"]
-                             [lein-eftest "0.5.2"]
-                             [lein-codox "0.10.3"]
+                   :plugins [[s3-wagon-private "1.3.2"]
+                             [test2junit "1.4.2"]
+                             [lein-eftest "0.5.3"]
+                             [lein-codox "0.10.4"]
                              [lein-environ "1.1.0"]]
 
                    :codox {:metadata {:doc/format :markdown}}
