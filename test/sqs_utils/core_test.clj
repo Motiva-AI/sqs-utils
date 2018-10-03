@@ -107,6 +107,15 @@
                                     (str endpoint "/queue/non-existing")
                                     {:testing 1}))))))
 
+(deftest send-fifo-message-test
+  (testing "Fail case, missing :message-group-id"
+    (is (thrown? java.lang.AssertionError
+                 (su/send-fifo-message
+                   (sqs-config)
+                   @test-queue-url
+                   {:testing 1}
+                   {})))))
+
 (deftest roundtrip-datetime-test
   (let [coll {:data [1 2 3]
               :timestamp (t/now)}

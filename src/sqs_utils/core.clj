@@ -190,6 +190,7 @@
    {message-group-id :message-group-id
     deduplication-id :deduplication-id
     :as options}]
+  {:pre [message-group-id]}
   (send-message* sqs-config queue-url payload options))
 
 ;; Controls ;;;;;;;;;;;;;;;;;
