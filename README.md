@@ -50,16 +50,20 @@ Send messages to a queue:
 sqs-utils.core> (doc send-message)
 -------------------------
 sqs-utils.core/send-message
-([sqs-config queue-url payload & {:keys [group-id]}])
+[sqs-config queue-url payload]
   Send a message to a standard queue.
 => nil
 sqs-utils.core> (doc send-fifo-message)
 -------------------------
 sqs-utils.core/send-fifo-message
-([sqs-config queue-url message-group-id payload])
-  Send a message to a FIFO queue. message-group-id is a tag that specifies the
-  group that this message belongs to. Messages belonging to the same group are
-  guaranteed FIFO.
+[sqs-config queue-url payload {message-group-id :message-group-id, deduplication-id :deduplication-id, :as options}]
+  Send a message to a FIFO queue.
+
+  Options:
+  message-group-id - a tag that specifies the group that this message
+  belongs to. Messages belonging to the same group
+  are guaranteed FIFO
+  deduplication-id -  token used for deduplication of sent messages
 => nil
 ```
 
