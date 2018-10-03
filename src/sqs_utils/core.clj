@@ -179,10 +179,12 @@
 (defn send-fifo-message
   "Send a message to a FIFO queue.
 
-   Options:
+   Arguments:
    message-group-id - a tag that specifies the group that this message
                       belongs to. Messages belonging to the same group
                       are guaranteed FIFO
+
+   Options:
    deduplication-id -  token used for deduplication of sent messages"
   [sqs-config
    queue-url

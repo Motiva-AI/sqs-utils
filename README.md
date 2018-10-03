@@ -59,10 +59,12 @@ sqs-utils.core/send-fifo-message
 [sqs-config queue-url payload {message-group-id :message-group-id, deduplication-id :deduplication-id, :as options}]
   Send a message to a FIFO queue.
 
-  Options:
+  Argments:
   message-group-id - a tag that specifies the group that this message
   belongs to. Messages belonging to the same group
   are guaranteed FIFO
+
+  Options:
   deduplication-id -  token used for deduplication of sent messages
 => nil
 ```
