@@ -39,8 +39,12 @@
 
                    :env {:sqs-endpoint          "http://localhost:9324"
                          :sqs-region            "us-east-2"
-                         :aws-access-key-id     "local"
-                         :aws-secret-access-key "local"}}}
+                         :standard-integration-test-queue-url ""
+                         :fifo-integration-test-queue-url     ""
+                         :aws-access-key-id          "local"
+                         :aws-secret-access-key      "local"
+                         :integration-aws-access-key ""
+                         :integration-aws-secret-key ""}}}
 
   :test-selectors {:default     (complement :integration)
                    :integration :integration
