@@ -1,4 +1,4 @@
-(defproject motiva/sqs-utils "0.2.3"
+(defproject motiva/sqs-utils "0.3.0-SNAPSHOT"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
   :license {:name "MIT License"
