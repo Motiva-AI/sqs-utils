@@ -157,12 +157,14 @@
 
 (defn send-message*
   "Send a message to a queue."
-  [sqs-config queue-url payload & {:keys [group-id]}]
+  [sqs-config queue-url payload {:keys [message-group-id
+                                        deduplication-id]}]
   (let [resp (<!! (sqs/send-message!
                     sqs-config
                     queue-url
                     (cond-> {:body payload :fink-nottle/tag :transit}
-                      group-id (assoc :message-group-id (str group-id)))))]
+                      message-group-id (assoc :message-group-id (str message-group-id))
+                      deduplication-id (assoc :message-deduplication-id (str deduplication-id)))))]
     ;; sqs/send-message! returns Exceptions into the channel
     (if (instance? Exception resp)
       (throw resp)
@@ -172,14 +174,26 @@
   "Send a message to a standard queue."
   [sqs-config queue-url payload]
   ;; Note that standard queues don't support message-group-id
-  (send-message* sqs-config queue-url payload))
+  (send-message* sqs-config queue-url payload {}))
 
 (defn send-fifo-message
-  "Send a message to a FIFO queue. message-group-id is a tag that specifies the
-  group that this message belongs to. Messages belonging to the same group are
-  guaranteed FIFO."
-  [sqs-config queue-url message-group-id payload]
-  (send-message* sqs-config queue-url payload :group-id message-group-id))
+  "Send a message to a FIFO queue.
+
+   Arguments:
+   message-group-id - a tag that specifies the group that this message
+                      belongs to. Messages belonging to the same group
+                      are guaranteed FIFO
+
+   Options:
+   deduplication-id -  token used for deduplication of sent messages"
+  [sqs-config
+   queue-url
+   payload
+   {message-group-id :message-group-id
+    deduplication-id :deduplication-id
+    :as options}]
+  {:pre [message-group-id]}
+  (send-message* sqs-config queue-url payload options))
 
 ;; Controls ;;;;;;;;;;;;;;;;;
 

@@ -1,4 +1,4 @@
-(defproject motiva/sqs-utils "0.2.3"
+(defproject motiva/sqs-utils "0.3.0-SNAPSHOT"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
   :license {:name "MIT License"
@@ -39,8 +39,12 @@
 
                    :env {:sqs-endpoint          "http://localhost:9324"
                          :sqs-region            "us-east-2"
-                         :aws-access-key-id     "local"
-                         :aws-secret-access-key "local"}}}
+                         :standard-integration-test-queue-url ""
+                         :fifo-integration-test-queue-url     ""
+                         :aws-access-key-id          "local"
+                         :aws-secret-access-key      "local"
+                         :integration-aws-access-key ""
+                         :integration-aws-secret-key ""}}}
 
   :test-selectors {:default     (complement :integration)
                    :integration :integration
