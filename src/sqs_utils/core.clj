@@ -118,7 +118,7 @@
                (stop-loop)
 
                ;; we have a message, is it an error?
-               (isa? (class message) clojure.lang.IExceptionInfo)
+               (instance? Throwable message)
                ;; fink-nottle closes the messages channel on error, so we must
                ;; restart
                (let [{:keys [this-pass-started-at] :as stats} (:stats @loop-state)]
