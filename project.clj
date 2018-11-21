@@ -5,7 +5,7 @@
             :url "https://opensource.org/licenses/MIT"}
 
   :dependencies [[org.clojure/clojure "1.9.0"]
-                 [org.clojure/core.async "0.4.474"]
+                 [org.clojure/core.async "0.4.490"]
                  [io.nervous/fink-nottle "0.4.7"]
                  [org.clojure/tools.logging "0.4.1"]
                  [clj-time "0.15.1"]
