@@ -27,6 +27,7 @@
                                   [org.clojure/tools.namespace "0.2.11"]
                                   [viebel/codox-klipse-theme "0.0.5"]
                                   [motiva/wait-for "0.3.0"]
+                                  [motiva/inspect "0.1.1"]
                                   [environ "1.1.0"]]
 
                    :plugins [[s3-wagon-private "1.3.2"]

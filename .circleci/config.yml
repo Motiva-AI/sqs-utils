@@ -30,7 +30,7 @@ jobs:
 
       - run:
           name: Create codox docs
-          run: lein codox
+          command: lein codox
 
       - store_artifacts:
           path: target/default/doc

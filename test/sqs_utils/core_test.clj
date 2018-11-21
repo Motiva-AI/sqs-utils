@@ -8,7 +8,9 @@
             [sqs-utils.test-utils :as test-utils]
             [environ.core :refer [env]]
             [wait-for.core :refer [wait-for]]
-            [bond.james :as bond]))
+            [inspect.core :refer [inspect]]
+            [bond.james :as bond])
+  (:import [java.lang NoSuchMethodError Exception]))
 
 (def test-queue-url (atom nil))
 
@@ -36,12 +38,14 @@
   (let [c (chan)
         creds (sqs-config)]
     (is (su/send-message creds @test-queue-url {:testing 2}))
-    (is (su/receive-loop! creds @test-queue-url c))
-    (is (= {:testing 2}
-           (:message (<!! c))))
-    (is (su/send-message creds @test-queue-url {:testing 1}))
-    (is (= {:testing 1}
-           (:message (<!! c))))))
+    (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
+      (is (fn? kill-fn))
+      (is (= {:testing 2}
+             (:message (<!! c))))
+      (is (su/send-message creds @test-queue-url {:testing 1}))
+      (is (= {:testing 1}
+             (:message (<!! c))))
+      (kill-fn))))
 
 (deftest receipt-handle-present-when-not-auto-deleting
   (let [creds (sqs-config)]
@@ -138,40 +142,52 @@
       (is (nil? (<!! c))))))
 
 (deftest fink-nottle-error-handling-works
-  (let [c              (chan)
-        messages-chan1 (chan)
-        creds          (sqs-config)]
-    (bond/with-stub! [[sqs.channeled/receive! (constantly messages-chan1)]]
-      (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
-        (is (some? kill-fn))
-        (>!! messages-chan1 {:body :hello})
-        (is (= :hello (:message (<!! c))))
-        (is (= 1 (-> sqs.channeled/receive! bond/calls count)))
-        ;; set up the next channel to return when receive is called
-        (let [messages-chan2 (chan)]
-          (bond/with-stub! [[sqs.channeled/receive! (constantly messages-chan2)]]
-            ;; ensure it hasn't been called yet
-            (is (= 0 (-> sqs.channeled/receive! bond/calls count)))
-            ;; fire off an error
-            (>!! messages-chan1 (ex-info "test message" {}))
-            ;; receive should be called again
-            (wait-for #(= 1 (-> sqs.channeled/receive! bond/calls count)))
-            ;; first channel should be closed
-            (is (clojure.core.async.impl.protocols/closed? messages-chan1))
-            ;; second channel should be ok
-            (is (not (clojure.core.async.impl.protocols/closed? messages-chan2)))
-            ;; out-chan should be ok
-            (is (not (clojure.core.async.impl.protocols/closed? c)))
-            ;; everything should still work
-            (>!! messages-chan2 {:body :still-works})
-            (is (= :still-works (:message (<!! c))))
+  (letfn [(run-one-test [throwable]
+            (let [c              (chan)
+                  messages-chan1 (chan)
+                  creds          (sqs-config)]
+              (bond/with-stub! [[sqs.channeled/receive! (constantly messages-chan1)]]
+                (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
+                  (try
+                    (is (fn? kill-fn))
+                    (>!! messages-chan1 {:body :hello})
+                    (is (= :hello (:message (<!! c))))
+                    (is (= 1 (-> sqs.channeled/receive! bond/calls count)))
+                    ;; set up the next channel to return when receive is called
+                    (let [messages-chan2 (chan)]
+                      (bond/with-stub! [[sqs.channeled/receive! (constantly messages-chan2)]]
+                        ;; ensure it hasn't been called yet
+                        (is (= 0 (-> sqs.channeled/receive! bond/calls count)))
+                        ;; fire off an error
+                        (>!! messages-chan1 (ex-info "test message" {}))
+                        ;; receive should be called again
+                        (wait-for #(= 1 (-> sqs.channeled/receive! bond/calls count)))
+                        ;; first channel should be closed
+                        (is (clojure.core.async.impl.protocols/closed? messages-chan1))
+                        ;; second channel should be ok
+                        (is (not (clojure.core.async.impl.protocols/closed? messages-chan2)))
+                        ;; out-chan should be ok
+                        (is (not (clojure.core.async.impl.protocols/closed? c)))
+                        ;; everything should still work
+                        (>!! messages-chan2 {:body :still-works})
+                        (is (= :still-works (:message (<!! c))))
 
-            ;; terminate the loop
-            (let [stats (kill-fn)]
-              (is (= 1 (:restart-count stats)))
-              (is (instance? org.joda.time.DateTime (:restarted-at stats)))
-              (is (= 3 (:count stats)))
-              ;; everything should be closed
-              (is (clojure.core.async.impl.protocols/closed? messages-chan1))
-              (is (clojure.core.async.impl.protocols/closed? messages-chan2))
-              (is (clojure.core.async.impl.protocols/closed? c)))))))))
+                        ;; terminate the loop
+                        (let [stats (kill-fn)]
+                          (is (= 1 (:restart-count stats)))
+                          (is (instance? org.joda.time.DateTime (:restarted-at stats)))
+                          (is (= 3 (:count stats)))
+                          ;; everything should be closed
+                          (is (clojure.core.async.impl.protocols/closed? messages-chan1))
+                          (is (clojure.core.async.impl.protocols/closed? messages-chan2))
+                          (is (clojure.core.async.impl.protocols/closed? c)))))
+                    (catch Throwable t
+                      (kill-fn)
+                      (throw t)))))))]
+
+    (testing "for ex-info wrapped errors"
+      (run-one-test (ex-info "test message" {})))
+
+    (testing "for unwrapped java exceptions"
+      (run-one-test (NoSuchMethodError. "test message"))
+      (run-one-test (Exception. "test message")))))
