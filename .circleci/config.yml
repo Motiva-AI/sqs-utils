@@ -10,44 +10,30 @@ jobs:
       - checkout
 
       - restore_cache:
-          key: v2-sqs-utils-{{ arch }}-{{ checksum "project.clj" }}
+          key: v3-sqs-utils-{{ arch }}-{{ checksum "project.clj" }}
 
       - run:
           name: Install dependencies
           command: lein deps
 
-      - run:
-          name: Install ant
-          command: |
-            if [ ! -d "${HOME}/ant" ]
-            then
-                curl -o ${HOME}/ant.tar.bz2 http://mirror.csclub.uwaterloo.ca/apache//ant/binaries/apache-ant-1.10.5-bin.tar.bz2
-                tar jxf ${HOME}/ant.tar.bz2 -C ${HOME}
-                mv ${HOME}/apache-ant-1.10.5 ${HOME}/ant
-            fi
-
       - save_cache:
-          key: v2-sqs-utils-{{ arch }}-{{ checksum "project.clj" }}
+          key: v3-sqs-utils-{{ arch }}-{{ checksum "project.clj" }}
           paths:
             - ~/.m2
-            - ~/ant
 
       - run:
           name: Run tests
-          command: |
-            mkdir -p ~/test_output
-            mkdir -p ~/artifacts
-            mkdir -p ~/codox
-            scripts/run_ci.sh
+          command: lein test :all
 
       - store_test_results:
           path: ~/test_output
 
-      - store_artifacts:
-          path: ~/artifacts
+      - run:
+          name: Create codox docs
+          run: lein codox
 
       - store_artifacts:
-          path: ~/codox
+          path: target/default/doc
 
       - deploy:
           name: Deploy jar to S3 repo
