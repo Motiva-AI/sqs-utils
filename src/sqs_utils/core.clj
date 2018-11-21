@@ -70,7 +70,7 @@
                ;; Make a fresh sqs.channeled/receive! call and replace the
                ;; existing messages channel with the new one.
                (log/infof "Restarting receive-loop for %s" queue-url)
-               (let [messages (:messages @loop-state)]
+               (let [messages-chan (:messages @loop-state)]
                  (swap! loop-state
                         (fn [state]
                           (-> state
@@ -80,7 +80,7 @@
                                        {:visibility-timeout visibility-timeout}))
                               (update-in [:stats :restart-count] inc)
                               (assoc-in [:stats :restarted-at] (t/now)))))
-                 (async/close! messages)))
+                 (async/close! messages-chan)))
 
              (stop-loop []
                ;; Set running to false causing the loop to exit, close the
@@ -126,8 +126,8 @@
                            (assoc stats :last-wait-duration (secs-between this-pass-started-at
                                                                           (t/now))))
                  ;; Adding a restart delay so that this doesn't go into an
-                 ;; infinite loop if the queue listener is failing to start
-                 ;; continuously.
+                 ;; abusively tight loop if the queue listener is failing to
+                 ;; start continuously.
                  (<! (async/timeout (int (* restart-delay-seconds 1000))))
                  (restart-loop))
 
