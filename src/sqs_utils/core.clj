@@ -5,6 +5,7 @@
             [clojure.tools.logging :as log]
             [clj-time.core :as t]
             [sqs-utils.serde :as serde]
+            [cheshire.core :as json]
             [fink-nottle.sqs :as sqs]
             [fink-nottle.sqs.tagged :as sqs.tagged]
             [fink-nottle.sqs.channeled :as sqs.channeled]))
@@ -15,6 +16,13 @@
   (serde/transit-read body))
 (defmethod sqs.tagged/message-out :transit [_ body]
   (serde/transit-write body))
+
+;; similarly json
+
+(defmethod sqs.tagged/message-in :json [_ body]
+  (json/parse-string body true))
+(defmethod sqs.tagged/message-out :json [_ body]
+  (json/generate-string body))
 
 ;; CRUD ;;;;;;
 
@@ -158,11 +166,13 @@
 (defn send-message*
   "Send a message to a queue."
   [sqs-config queue-url payload {:keys [message-group-id
-                                        deduplication-id]}]
+                                        deduplication-id
+                                        format]
+                                 :or {format :transit}}]
   (let [resp (<!! (sqs/send-message!
                     sqs-config
                     queue-url
-                    (cond-> {:body payload :fink-nottle/tag :transit}
+                    (cond-> {:body payload :fink-nottle/tag format}
                       message-group-id (assoc :message-group-id (str message-group-id))
                       deduplication-id (assoc :message-deduplication-id (str deduplication-id)))))]
     ;; sqs/send-message! returns Exceptions into the channel
@@ -171,10 +181,14 @@
       resp)))
 
 (defn send-message
-  "Send a message to a standard queue."
-  [sqs-config queue-url payload]
-  ;; Note that standard queues don't support message-group-id
-  (send-message* sqs-config queue-url payload {}))
+  "Send a message to a standard queue, by default transit encoded. An optional map
+  may be passed as a 5th argument, containing a `:format` key which should be
+  set to either `:json` or `:transit`."
+  ([sqs-config queue-url payload]
+   (send-message sqs-config queue-url payload {}))
+  ([sqs-config queue-url payload {:keys [format] :or {format :transit}}]
+   ;; Note that standard queues don't support message-group-id
+   (send-message* sqs-config queue-url payload {:format format})))
 
 (defn send-fifo-message
   "Send a message to a FIFO queue.
@@ -191,7 +205,9 @@
    payload
    {message-group-id :message-group-id
     deduplication-id :deduplication-id
-    :as options}]
+    format :format
+    :as options
+    :or {format :transit}}]
   {:pre [message-group-id]}
   (send-message* sqs-config queue-url payload options))
 
