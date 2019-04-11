@@ -46,12 +46,18 @@
    out-chan  - async channel where messages will be passed into
    opts      - an optional map containing the following keys:
 
-      auto-delete        - boolean, if true, immediately delete the message,
-                           if false, forward a `done` function and leave the
-                           message intact.
+      auto-delete           - boolean, if true, immediately delete the message,
+                              if false, forward a `done` function and leave the
+                              message intact.
 
-      visibility-timeout - how long (in seconds) a message can go unacknowledged
-                           before delivery is retried.
+      visibility-timeout    - how long (in seconds) a message can go unacknowledged
+                              before delivery is retried.
+
+      restart-delay-seconds - how long (in seconds) to wait before attempting to
+                              restart the consumer loop.
+
+      maximum-messages      - the maximum number of messages to be delivered as
+                              a result of a single poll of SQS.
 
   auto-delete defaults to true, visibility-timeout defaults to 60 seconds.
 
@@ -59,14 +65,18 @@
   ([sqs-config queue-url out-chan]
    (receive-loop! sqs-config queue-url out-chan {}))
 
-  ([sqs-config queue-url out-chan {:keys [auto-delete visibility-timeout restart-delay-seconds]
-                                   :or   {auto-delete           true
-                                          visibility-timeout    60
-                                          restart-delay-seconds 1}
-                                   :as   opts}]
+  ([sqs-config queue-url out-chan
+    {:keys [auto-delete visibility-timeout restart-delay-seconds maximum-messages]
+     :or   {auto-delete           true
+            visibility-timeout    60
+            restart-delay-seconds 1
+            maximum-messages      10}
+     :as   opts}]
    (let [loop-state (atom {:messages
                            (sqs.channeled/receive!
-                             sqs-config queue-url {:visibility-timeout visibility-timeout})
+                             sqs-config queue-url
+                             {:visibility-timeout visibility-timeout
+                              :maximum maximum-messages})
                            :running true
                            :stats   {:count         0
                                      :started-at    (t/now)
@@ -85,7 +95,8 @@
                               (assoc :messages
                                      (sqs.channeled/receive!
                                        sqs-config queue-url
-                                       {:visibility-timeout visibility-timeout}))
+                                       {:visibility-timeout visibility-timeout
+                                        :maximum maximum-messages}))
                               (update-in [:stats :restart-count] inc)
                               (assoc-in [:stats :restarted-at] (t/now)))))
                  (async/close! messages-chan)))
@@ -229,23 +240,28 @@
    opts       - an optional map containing the following keys:
       num-handler-threads - how many threads to run (defaults: 4)
 
-      auto-delete        - boolean, if true, immediately delete the message,
-                           if false, forward a `done` function and leave the
-                           message intact. (defaults: true)
+      auto-delete         - boolean, if true, immediately delete the message,
+                            if false, forward a `done` function and leave the
+                            message intact. (defaults: true)
 
-      visibility-timeout - how long (in seconds) a message can go unacknowledged
-                           before delivery is retried. (defaults: 60)
+      visibility-timeout  - how long (in seconds) a message can go unacknowledged
+                            before delivery is retried. (defaults: 60)
+
+      maximum-messages    - the maximum number of messages to be delivered as
+                            a result of a single poll of SQS.
 
   See http://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html
   for more information about visibility timeout.
 
   Returns:
   a kill function - call the function to terminate the loop."
-  ([sqs-config queue-url handler-fn {:keys [num-handler-threads auto-delete visibility-timeout]
-                                     :or   {num-handler-threads 4
-                                            auto-delete         true
-                                            visibility-timeout  60}
-                                     :as   opts}]
+  ([sqs-config queue-url handler-fn
+    {:keys [num-handler-threads auto-delete visibility-timeout maximum-messages]
+     :or   {num-handler-threads 4
+            auto-delete         true
+            visibility-timeout  60
+            maximum-messages    10}
+     :as   opts}]
    (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s, visibility-timeout: %d"
               queue-url num-handler-threads auto-delete visibility-timeout)
    (let [receive-chan (chan)
@@ -253,7 +269,8 @@
                                      queue-url
                                      receive-chan
                                      {:auto-delete        auto-delete
-                                      :visibility-timeout visibility-timeout})]
+                                      :visibility-timeout visibility-timeout
+                                      :maximum-messages   maximum-messages})]
      (dotimes [_ num-handler-threads]
        (thread
          (loop []
