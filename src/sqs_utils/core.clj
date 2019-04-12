@@ -43,6 +43,8 @@
       maximum-messages      - the maximum number of messages to be delivered as
                               a result of a single poll of SQS.
 
+      num-consumers         - the number of concurrent long-polls to run
+
   auto-delete defaults to true, visibility-timeout defaults to 60 seconds.
 
   Returns a kill function - call the function to terminate the loop."
@@ -50,15 +52,21 @@
    (receive-loop! sqs-config queue-url out-chan {}))
 
   ([sqs-config queue-url out-chan
-    {:keys [auto-delete visibility-timeout restart-delay-seconds maximum-messages]
+    {:keys [auto-delete
+            visibility-timeout
+            restart-delay-seconds
+            maximum-messages
+            num-consumers]
      :or   {auto-delete           true
             visibility-timeout    60
             restart-delay-seconds 1
-            maximum-messages      10}
+            maximum-messages      10
+            num-consumers         nil}
      :as   opts}]
    (let [receive-to-chan #(impl/receive! sqs-config queue-url
                                          {:visibility-timeout visibility-timeout
-                                          :maximum maximum-messages})
+                                          :maximum maximum-messages}
+                                         num-consumers)
          loop-state (atom {:messages (receive-to-chan)
                            :running true
                            :stats   {:count         0
@@ -212,17 +220,25 @@
       maximum-messages    - the maximum number of messages to be delivered as
                             a result of a single poll of SQS.
 
+      num-consumers       - the number of polling requests to run concurrently.
+                            (defaults: 1)
+
   See http://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html
   for more information about visibility timeout.
 
   Returns:
   a kill function - call the function to terminate the loop."
   ([sqs-config queue-url handler-fn
-    {:keys [num-handler-threads auto-delete visibility-timeout maximum-messages]
+    {:keys [num-handler-threads
+            auto-delete
+            visibility-timeout
+            maximum-messages
+            num-consumers]
      :or   {num-handler-threads 4
             auto-delete         true
             visibility-timeout  60
-            maximum-messages    10}
+            maximum-messages    10
+            num-consumers       nil}
      :as   opts}]
    (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s, visibility-timeout: %d"
               queue-url num-handler-threads auto-delete visibility-timeout)
@@ -232,7 +248,8 @@
                                      receive-chan
                                      {:auto-delete        auto-delete
                                       :visibility-timeout visibility-timeout
-                                      :maximum-messages   maximum-messages})]
+                                      :maximum-messages   maximum-messages
+                                      :num-consumers      num-consumers})]
      (dotimes [_ num-handler-threads]
        (thread
          (loop []

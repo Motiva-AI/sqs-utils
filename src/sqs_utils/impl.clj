@@ -4,7 +4,8 @@
             [fink-nottle.sqs :as sqs]
             [sqs-utils.serde :as serde]
             [cheshire.core :as json]
-            [clojure.core.async :as async :refer [<!!]]))
+            [clojure.core.async :as async :refer [<!!]]
+            [clojure.core.async.lab :as async.lab]))
 
 ;; auto ser/de transit messages
 
@@ -23,9 +24,16 @@
 ;; basics
 
 (defn receive!
-  [sqs-config queue-url opts]
+  [sqs-config queue-url opts & n]
   (let [opts (merge {:maximum 10 :wait-seconds 20} opts)]
-    (sqs.channeled/receive! sqs-config queue-url opts)))
+    (if-let [n (first n)]
+      (apply async.lab/multiplex
+             (loop [chs [] n n]
+               (if (= n 0)
+                 chs
+                 (let [ch (sqs.channeled/receive! sqs-config queue-url opts)]
+                   (recur (conj chs ch) (dec n))))))
+      (sqs.channeled/receive! sqs-config queue-url opts))))
 
 (defn processed!
   [sqs-config queue-url message]
