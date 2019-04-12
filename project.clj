@@ -1,12 +1,16 @@
-(defproject motiva/sqs-utils "0.5.0"
+(defproject motiva/sqs-utils "0.6.0-SNAPSHOT"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
   :license {:name "MIT License"
             :url  "https://opensource.org/licenses/MIT"}
 
-  :dependencies [[org.clojure/clojure "1.9.0"]
+  :dependencies [[org.clojure/clojure "1.10.1-beta2"]
                  [org.clojure/core.async "0.4.490"]
                  [io.nervous/fink-nottle "0.4.7"]
+                 ;; Cognitect Labs' aws-api project
+                 ;; [com.cognitect.aws/api "0.8.289"]
+                 ;; [com.cognitect.aws/endpoints "1.1.11.526"]
+                 ;; [com.cognitect.aws/sqs "697.2.391.0"]
                  [org.clojure/tools.logging "0.4.1"]
                  [clj-time "0.15.1"]
                  [cheshire "5.8.1"]                     ;; json
