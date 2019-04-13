@@ -6,31 +6,15 @@
             [clj-time.core :as t]
             [sqs-utils.serde :as serde]
             [cheshire.core :as json]
-            [fink-nottle.sqs :as sqs]
-            [fink-nottle.sqs.tagged :as sqs.tagged]
-            [fink-nottle.sqs.channeled :as sqs.channeled]))
-
-;; auto ser/de transit messages
-
-(defmethod sqs.tagged/message-in  :transit [_ body]
-  (serde/transit-read body))
-(defmethod sqs.tagged/message-out :transit [_ body]
-  (serde/transit-write body))
-
-;; similarly json
-
-(defmethod sqs.tagged/message-in :json [_ body]
-  (json/parse-string body true))
-(defmethod sqs.tagged/message-out :json [_ body]
-  (json/generate-string body))
+            [sqs-utils.impl :as impl]))
 
 ;; CRUD ;;;;;;
 
 (defn receive-one!
   [sqs-config queue-url]
   (let [{:keys [body] :as message}
-        (<!! (sqs.channeled/receive! sqs-config queue-url {:maximum 1}))]
-    (<!! (sqs/processed! sqs-config queue-url message))
+        (<!! (impl/receive! sqs-config queue-url {:maximum 1}))]
+    (<!! (impl/processed! sqs-config queue-url message))
     body))
 
 (defn receive-loop!
@@ -59,6 +43,8 @@
       maximum-messages      - the maximum number of messages to be delivered as
                               a result of a single poll of SQS.
 
+      num-consumers         - the number of concurrent long-polls to run
+
   auto-delete defaults to true, visibility-timeout defaults to 60 seconds.
 
   Returns a kill function - call the function to terminate the loop."
@@ -66,17 +52,22 @@
    (receive-loop! sqs-config queue-url out-chan {}))
 
   ([sqs-config queue-url out-chan
-    {:keys [auto-delete visibility-timeout restart-delay-seconds maximum-messages]
+    {:keys [auto-delete
+            visibility-timeout
+            restart-delay-seconds
+            maximum-messages
+            num-consumers]
      :or   {auto-delete           true
             visibility-timeout    60
             restart-delay-seconds 1
-            maximum-messages      10}
+            maximum-messages      10
+            num-consumers         nil}
      :as   opts}]
-   (let [loop-state (atom {:messages
-                           (sqs.channeled/receive!
-                             sqs-config queue-url
-                             {:visibility-timeout visibility-timeout
-                              :maximum maximum-messages})
+   (let [receive-to-chan #(impl/receive! sqs-config queue-url
+                                         {:visibility-timeout visibility-timeout
+                                          :maximum maximum-messages}
+                                         num-consumers)
+         loop-state (atom {:messages (receive-to-chan)
                            :running true
                            :stats   {:count         0
                                      :started-at    (t/now)
@@ -92,11 +83,7 @@
                  (swap! loop-state
                         (fn [state]
                           (-> state
-                              (assoc :messages
-                                     (sqs.channeled/receive!
-                                       sqs-config queue-url
-                                       {:visibility-timeout visibility-timeout
-                                        :maximum maximum-messages}))
+                              (assoc :messages (receive-to-chan))
                               (update-in [:stats :restart-count] inc)
                               (assoc-in [:stats :restarted-at] (t/now)))))
                  (async/close! messages-chan)))
@@ -152,7 +139,7 @@
 
                ;; it's a well formed actionable message
                :else
-               (let [done-fn #(<!! (sqs/processed! sqs-config queue-url message))
+               (let [done-fn #(<!! (impl/processed! sqs-config queue-url message))
                      msg     (cond-> {:message body}
                                (not auto-delete) (assoc :done-fn done-fn))]
                  (if body
@@ -174,23 +161,6 @@
        ;; return a kill function
        stop-loop))))
 
-(defn send-message*
-  "Send a message to a queue."
-  [sqs-config queue-url payload {:keys [message-group-id
-                                        deduplication-id
-                                        format]
-                                 :or {format :transit}}]
-  (let [resp (<!! (sqs/send-message!
-                    sqs-config
-                    queue-url
-                    (cond-> {:body payload :fink-nottle/tag format}
-                      message-group-id (assoc :message-group-id (str message-group-id))
-                      deduplication-id (assoc :message-deduplication-id (str deduplication-id)))))]
-    ;; sqs/send-message! returns Exceptions into the channel
-    (if (instance? Exception resp)
-      (throw resp)
-      resp)))
-
 (defn send-message
   "Send a message to a standard queue, by default transit encoded. An optional map
   may be passed as a 5th argument, containing a `:format` key which should be
@@ -199,7 +169,7 @@
    (send-message sqs-config queue-url payload {}))
   ([sqs-config queue-url payload {:keys [format] :or {format :transit}}]
    ;; Note that standard queues don't support message-group-id
-   (send-message* sqs-config queue-url payload {:format format})))
+   (impl/send-message! sqs-config queue-url payload {:format format})))
 
 (defn send-fifo-message
   "Send a message to a FIFO queue.
@@ -220,7 +190,7 @@
     :as options
     :or {format :transit}}]
   {:pre [message-group-id]}
-  (send-message* sqs-config queue-url payload options))
+  (impl/send-message! sqs-config queue-url payload options))
 
 ;; Controls ;;;;;;;;;;;;;;;;;
 
@@ -250,17 +220,25 @@
       maximum-messages    - the maximum number of messages to be delivered as
                             a result of a single poll of SQS.
 
+      num-consumers       - the number of polling requests to run concurrently.
+                            (defaults: 1)
+
   See http://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html
   for more information about visibility timeout.
 
   Returns:
   a kill function - call the function to terminate the loop."
   ([sqs-config queue-url handler-fn
-    {:keys [num-handler-threads auto-delete visibility-timeout maximum-messages]
+    {:keys [num-handler-threads
+            auto-delete
+            visibility-timeout
+            maximum-messages
+            num-consumers]
      :or   {num-handler-threads 4
             auto-delete         true
             visibility-timeout  60
-            maximum-messages    10}
+            maximum-messages    10
+            num-consumers       nil}
      :as   opts}]
    (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s, visibility-timeout: %d"
               queue-url num-handler-threads auto-delete visibility-timeout)
@@ -270,7 +248,8 @@
                                      receive-chan
                                      {:auto-delete        auto-delete
                                       :visibility-timeout visibility-timeout
-                                      :maximum-messages   maximum-messages})]
+                                      :maximum-messages   maximum-messages
+                                      :num-consumers      num-consumers})]
      (dotimes [_ num-handler-threads]
        (thread
          (loop []
