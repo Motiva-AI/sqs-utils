@@ -61,7 +61,7 @@
             visibility-timeout    60
             restart-delay-seconds 1
             maximum-messages      10
-            num-consumers         nil}
+            num-consumers         1}
      :as   opts}]
    (let [receive-to-chan #(impl/receive! sqs-config queue-url
                                          {:visibility-timeout visibility-timeout
@@ -238,7 +238,7 @@
             auto-delete         true
             visibility-timeout  60
             maximum-messages    10
-            num-consumers       nil}
+            num-consumers       1}
      :as   opts}]
    (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s, visibility-timeout: %d"
               queue-url num-handler-threads auto-delete visibility-timeout)

@@ -35,15 +35,16 @@
 
 (defn receive!
   [sqs-config queue-url opts & n]
-  (let [opts (merge {:maximum 10 :wait-seconds 20} opts)]
-    (if-let [n (first n)]
+  (let [opts (merge {:maximum 10 :wait-seconds 20} opts)
+        n (or (first n) 1)]
+    (if (= 1 n)
+      (sqs.channeled/receive! sqs-config queue-url opts)
       (multiplex
         (loop [chs [] n n]
           (if (= n 0)
             chs
             (let [ch (sqs.channeled/receive! sqs-config queue-url opts)]
-              (recur (conj chs ch) (dec n))))))
-      (sqs.channeled/receive! sqs-config queue-url opts))))
+              (recur (conj chs ch) (dec n)))))))))
 
 (defn processed!
   [sqs-config queue-url message]
