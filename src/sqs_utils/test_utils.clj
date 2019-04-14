@@ -32,7 +32,10 @@
   ([sqs-config queue]
    (init-queue sqs-config queue 1 1800))
   ([sqs-config queue n-threads timeout]
+   (init-queue sqs-config queue n-threads timeout 1))
+  ([sqs-config queue n-threads timeout n-consumers]
    {(keyword queue)
     {:url                (create-queue! sqs-config (name queue))
      :threads            n-threads
+     :consumers          n-consumers
      :visibility-timeout timeout}}))
