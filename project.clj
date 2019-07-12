@@ -6,6 +6,7 @@
 
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.clojure/core.async "0.4.500"]
+                 [org.clojure/core.cache "0.7.2"]
                  [io.nervous/fink-nottle "0.4.7"]
                  ;; Cognitect Labs' aws-api project
                  ;; [com.cognitect.aws/api "0.8.289"]
