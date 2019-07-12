@@ -4,8 +4,8 @@
   :license {:name "MIT License"
             :url  "https://opensource.org/licenses/MIT"}
 
-  :dependencies [[org.clojure/clojure "1.10.1-beta2"]
-                 [org.clojure/core.async "0.4.490"]
+  :dependencies [[org.clojure/clojure "1.10.1"]
+                 [org.clojure/core.async "0.4.500"]
                  [io.nervous/fink-nottle "0.4.7"]
                  ;; Cognitect Labs' aws-api project
                  ;; [com.cognitect.aws/api "0.8.289"]
@@ -26,9 +26,9 @@
                    :resource-paths ["resources" "dev/resources"]
 
                    :dependencies [[circleci/bond "0.3.2"]
-                                  [circleci/circleci.test "0.4.1"]
-                                  [eftest "0.5.3"]
-                                  [org.clojure/tools.namespace "0.2.11"]
+                                  [circleci/circleci.test "0.4.2"]
+                                  [eftest "0.5.8"]
+                                  [org.clojure/tools.namespace "0.3.0"]
                                   [viebel/codox-klipse-theme "0.0.5"]
                                   [motiva/wait-for "0.3.0"]
                                   [motiva/inspect "0.1.1"]
