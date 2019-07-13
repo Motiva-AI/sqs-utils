@@ -192,6 +192,96 @@
           (is (=  message out-message))
           (is (fn? out-done-fn)))
 
+        (stop-fn))))
+
+  (testing "Deduplication-time-period is set"
+    ;; Note that deduplication-id is nil because localhost queues don't support
+    ;; FIFO queues
+    (with-queue
+      (let [creds   (sqs-config)
+            message {:testing 3}
+
+            c       (chan)
+            handler-fn (fn [& args]
+                         (>!! c args)
+                         (Thread/sleep 10000))
+
+            stop-fn (su/handle-queue creds
+                                     @test-queue-url
+                                     handler-fn
+                                     {:auto-delete false
+                                      :deduplication-time-period 5})]
+
+        (is (su/send-fifo-message
+              creds
+              @test-queue-url
+              message
+              {:message-group-id 1
+               :deduplication-id 100}))
+        (let [[out-message out-done-fn] (<!! c)]
+          (is (=  message out-message))
+          (is (fn? out-done-fn))
+
+          ;; send another message before the first one is finished
+          (is (su/send-message creds @test-queue-url message))
+          (is (alt!!
+                c false
+                (async/timeout 1000) true))
+
+          ;; call done-fn on the first message to evict dedup cache
+          (is (out-done-fn)))
+        ;; and then send the same message again. We should receive it this
+        ;; time.
+        (is (su/send-message creds @test-queue-url message))
+        (let [[out-message out-done-fn] (<!! c)]
+          (is (=  message out-message))
+          (is (fn? out-done-fn))
+          (is (out-done-fn)))
+
+        (stop-fn))))
+
+  (testing "Deduplication-time-period is set and auot-delete is enabled"
+    ;; Note that deduplication-id is nil because localhost queues don't support
+    ;; FIFO queues
+    (with-queue
+      (let [creds   (sqs-config)
+            message {:testing 3}
+
+            c       (chan)
+            handler-fn (fn [& args]
+                         (>!! c args)
+                         (Thread/sleep 10000))
+
+            stop-fn (su/handle-queue creds
+                                     @test-queue-url
+                                     handler-fn
+                                     {:auto-delete true
+                                      :deduplication-time-period 1})]
+
+        (is (su/send-fifo-message
+              creds
+              @test-queue-url
+              message
+              {:message-group-id 1
+               :deduplication-id 100}))
+
+        ;; read output from handler-fn
+        (is (= [message] (<!! c)))
+
+        ;; send another message before the first one is finished. this second
+        ;; message should be dropped.
+        (is (su/send-message creds @test-queue-url message))
+        (is (alt!!
+              c false
+              (async/timeout 1000) true))
+
+        ;; Previous async/timeout is 1 second, wait a bit more and try sending
+        ;; message again. We should receive it this time because it's over the
+        ;; deduplication-time-period of 1 second.
+        (Thread/sleep 100)
+        (is (su/send-message creds @test-queue-url message))
+        (is (= [message] (<!! c)))
+
         (stop-fn)))))
 
 (deftest fink-nottle-error-handling-works
