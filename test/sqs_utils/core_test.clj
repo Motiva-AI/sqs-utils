@@ -158,6 +158,42 @@
           ;; closed channel should return nil - TODO some other way to verify?
           (is (nil? (<!! c))))))))
 
+(deftest handle-queue-test
+  (testing "Simple case without options"
+    (with-queue
+      (let [creds   (sqs-config)
+            message {:testing 3}
+
+            c       (chan)
+            handler-fn (fn [& args] (>!! c args))
+
+            stop-fn (su/handle-queue creds @test-queue-url handler-fn)]
+
+        (is (su/send-message creds @test-queue-url message))
+        (is (= [message] (<!! c)))
+
+        (stop-fn))))
+
+  (testing "Auto-delete off"
+    (with-queue
+      (let [creds   (sqs-config)
+            message {:testing 3}
+
+            c       (chan)
+            handler-fn (fn [& args] (>!! c args))
+
+            stop-fn (su/handle-queue creds
+                                     @test-queue-url
+                                     handler-fn
+                                     {:auto-delete false})]
+
+        (is (su/send-message creds @test-queue-url message))
+        (let [[out-message out-done-fn] (<!! c)]
+          (is (=  message out-message))
+          (is (fn? out-done-fn)))
+
+        (stop-fn)))))
+
 (deftest fink-nottle-error-handling-works
   (with-queue
     (letfn [(run-one-test [throwable]
