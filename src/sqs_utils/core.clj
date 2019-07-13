@@ -13,7 +13,9 @@
 (defn receive-one!
   [sqs-config queue-url]
   (let [{:keys [body] :as message}
-        (<!! (impl/receive! sqs-config queue-url {:maximum 1}))]
+        (<!! (impl/receive! sqs-config
+                            queue-url
+                            {:maximum 1}))]
     (<!! (impl/processed! sqs-config queue-url message))
     body))
 
@@ -65,7 +67,10 @@
      :as   opts}]
    (let [receive-to-chan #(impl/receive! sqs-config queue-url
                                          {:visibility-timeout visibility-timeout
-                                          :maximum maximum-messages}
+                                          :maximum maximum-messages
+                                          ;; getting these meta for extended-deduplication logic
+                                          ;; note that these fields are only available on AWS SQS queues
+                                          :meta [:message-group-id :message-deduplication-id]}
                                          num-consumers)
          loop-state (atom {:messages (receive-to-chan)
                            :running true
@@ -118,7 +123,7 @@
          (swap! loop-state update-stats)
 
          (try
-           (let [{:keys [body attrs] :as message} (<! (:messages @loop-state))]
+           (let [{:keys [body meta] :as message} (<! (:messages @loop-state))]
              (cond
                (nil? message) ;; closed, this loop is dead
                (stop-loop)
@@ -140,7 +145,7 @@
                ;; it's a well formed actionable message
                :else
                (let [done-fn #(<!! (impl/processed! sqs-config queue-url message))
-                     msg     (cond-> {:message body}
+                     msg     (cond-> {:message body :meta meta}
                                (not auto-delete) (assoc :done-fn done-fn))]
                  (if body
                    (>! out-chan msg)
@@ -253,11 +258,11 @@
      (dotimes [_ num-handler-threads]
        (thread
          (loop []
-           (when-let [coll (<!! receive-chan)]
+           (when-let [{:keys [message done-fn] :as coll} (<!! receive-chan)]
              (try
                (if auto-delete
-                 (handler-fn (:message coll))
-                 (handler-fn (:message coll) (:done-fn coll)))
+                 (handler-fn message)
+                 (handler-fn message done-fn))
                (catch Throwable t
                  (log/error t "SQS handler function threw an error")))
              (recur)))))
