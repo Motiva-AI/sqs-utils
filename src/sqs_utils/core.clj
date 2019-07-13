@@ -251,6 +251,9 @@
             maximum-messages    10
             num-consumers       1}
      :as   opts}]
+   {:pre [(string? queue-url)
+          ;; deduplication-time-period should only be set for fifo queues
+          (or (not deduplication-time-period) (impl/fifo? queue-url))]}
    (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s, visibility-timeout: %d"
               queue-url num-handler-threads auto-delete visibility-timeout)
    (let [receive-chan (chan)

@@ -5,6 +5,7 @@
             [clj-time.core :as t]
             [fink-nottle.sqs.channeled :as sqs.channeled]
             [sqs-utils.core :as su]
+            [sqs-utils.impl :as impl]
             [sqs-utils.test-utils :as test-utils]
             [environ.core :refer [env]]
             [wait-for.core :refer [wait-for]]
@@ -194,6 +195,14 @@
 
         (stop-fn))))
 
+  (testing "Ensure that deduplication-time-period is only enabled for FIFO queue"
+    (is (thrown? java.lang.AssertionError
+                 (su/handle-queue (sqs-config)
+                                  "https://sqs.us-west-1.amazonaws.com/111111111111/some_queue"
+                                  identity
+                                  {:auto-delete false
+                                   :deduplication-time-period 5}))))
+
   (testing "Deduplication-time-period is set"
     ;; Note that deduplication-id is nil because localhost queues don't support
     ;; FIFO queues
@@ -206,11 +215,12 @@
                          (>!! c args)
                          (Thread/sleep 10000))
 
-            stop-fn (su/handle-queue creds
-                                     @test-queue-url
-                                     handler-fn
-                                     {:auto-delete false
-                                      :deduplication-time-period 5})]
+            stop-fn (bond/with-stub! [[impl/fifo? (constantly true)]]
+                      (su/handle-queue creds
+                                       @test-queue-url
+                                       handler-fn
+                                       {:auto-delete false
+                                        :deduplication-time-period 5}))]
 
         (is (su/send-fifo-message
               creds
@@ -252,11 +262,12 @@
                          (>!! c args)
                          (Thread/sleep 10000))
 
-            stop-fn (su/handle-queue creds
-                                     @test-queue-url
-                                     handler-fn
-                                     {:auto-delete true
-                                      :deduplication-time-period 1})]
+            stop-fn (bond/with-stub! [[impl/fifo? (constantly true)]]
+                      (su/handle-queue creds
+                                       @test-queue-url
+                                       handler-fn
+                                       {:auto-delete true
+                                        :deduplication-time-period 1}))]
 
         (is (su/send-fifo-message
               creds

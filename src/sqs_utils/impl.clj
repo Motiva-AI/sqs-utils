@@ -6,6 +6,9 @@
             [cheshire.core :as json]
             [clojure.core.async :refer [<!! <! >! go-loop chan]]))
 
+(defn fifo? [queue-url]
+  (boolean (re-seq #"fifo$" queue-url)))
+
 ;; auto ser/de transit messages
 
 (defmethod sqs.tagged/message-in  :transit [_ body]
