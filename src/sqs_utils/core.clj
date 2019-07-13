@@ -292,11 +292,11 @@
                      (and deduplication-time-period
                           (not auto-delete))
                      (do
-                       (swap! deduplication-cache #(cache/miss % message-deduplication-id true))
+                       (swap! deduplication-cache #(assoc % message-deduplication-id true))
                        (handler-fn message
                                    (fn []
                                      ;; evict dedup-cache when done-fn is called
-                                     (swap! deduplication-cache #(cache/evict % message-deduplication-id))
+                                     (swap! deduplication-cache #(dissoc % message-deduplication-id))
                                      (log/debugf "Evicting message-deduplication-id [%s] from cache."
                                                  message-deduplication-id)
                                      (done-fn))))
@@ -309,7 +309,7 @@
                      ;; Case 4.
                      (and deduplication-time-period
                           auto-delete)
-                     (do (swap! deduplication-cache #(cache/miss % message-deduplication-id true))
+                     (do (swap! deduplication-cache #(assoc % message-deduplication-id true))
                          (handler-fn message))
 
                      ;; Case 5.
