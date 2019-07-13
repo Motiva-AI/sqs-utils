@@ -96,12 +96,19 @@
           (is  (sqs-utils/send-fifo-message  (sqs-config) fifo-queue-url msg3 {:message-group-id 1
                                                                                :deduplication-id 2
                                                                                :format format}))
-          (let  [stop-fn  (sqs-utils/receive-loop!  (sqs-config) fifo-queue-url c)]
-            (is  (= msg1 (:message (<!! c))))
+          (let  [stop-fn (sqs-utils/receive-loop! (sqs-config) fifo-queue-url c)]
+            (is  (= {:message msg1
+                     :meta {:message-group-id "1"
+                            :message-deduplication-id "1"}}
+                    (<!! c)))
             ;; second message doesn't exist because it has been de-duped
-            (is  (= msg3 (:message (<!! c))))
-            (let  [stats  (stop-fn)]
-              (is  (empty?  (:restarts stats))))))))))
+            (is  (= {:message msg3
+                     :meta {:message-group-id "1"
+                            :message-deduplication-id "2"}}
+                    (<!! c)))
+            (is  (-> (stop-fn) ;; returns stats
+                     (:restarts)
+                     (empty?)))))))))
 
 (deftest ^:integration roundtrip-datetime-test
   ;; this one is only relevant for transit, since JSON does not have a date/time
