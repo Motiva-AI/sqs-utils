@@ -2,6 +2,7 @@
   (:require [clojure.core.async
              :as async
              :refer [chan go-loop <! >! <!! >!! thread]]
+            [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
             [clj-time.core :as t]
             [sqs-utils.serde :as serde]
@@ -222,6 +223,10 @@
       visibility-timeout  - how long (in seconds) a message can go unacknowledged
                             before delivery is retried. (defaults: 60)
 
+      deduplication-time-period - how long (in seconds) are messages deduplicated
+                                  if a new message arrives while the previous one
+                                  is still processing.
+
       maximum-messages    - the maximum number of messages to be delivered as
                             a result of a single poll of SQS.
 
@@ -237,6 +242,7 @@
     {:keys [num-handler-threads
             auto-delete
             visibility-timeout
+            deduplication-time-period
             maximum-messages
             num-consumers]
      :or   {num-handler-threads 4
@@ -255,18 +261,67 @@
                                       :visibility-timeout visibility-timeout
                                       :maximum-messages   maximum-messages
                                       :num-consumers      num-consumers})]
-     (dotimes [_ num-handler-threads]
-       (thread
-         (loop []
-           (when-let [{:keys [message done-fn] :as coll} (<!! receive-chan)]
-             (try
-               (if auto-delete
-                 (handler-fn message)
-                 (handler-fn message done-fn))
-               (catch Throwable t
-                 (log/error t "SQS handler function threw an error")))
-             (recur)))))
+     ;; deduplication-cache is shared across all threads
+     (let [deduplication-cache (when deduplication-time-period
+                                 (->> (* 1000 deduplication-time-period)
+                                      (cache/ttl-cache-factory {} :ttl)
+                                      (atom)))]
+       (dotimes [_ num-handler-threads]
+         (thread
+           (loop []
+             (when-let [{:keys [message done-fn meta] :as coll} (<!! receive-chan)]
+               (try
+                 ;; extended-deduplication logic
+                 (let [{:keys [message-deduplication-id]} meta]
+
+                   ;; TODO: this (cond) is naively exhaustive. Refactor so we
+                   ;; don't need to list out every case.
+                   (cond
+                     ;; Case 1.
+                     (and deduplication-time-period
+                          (cache/has? @deduplication-cache message-deduplication-id))
+                     (do
+                       (log/infof (str "Not processing duplicate message with message-deduplication-id %s, "
+                                       "extended-deduplication time period is set to %d seconds.")
+                                  message-deduplication-id
+                                  deduplication-time-period)
+                       ;; acknowledge the duplicate message
+                       (when (not auto-delete) (done-fn)))
+
+                     ;; Case 2.
+                     (and deduplication-time-period
+                          (not auto-delete))
+                     (do
+                       (swap! deduplication-cache #(cache/miss % message-deduplication-id true))
+                       (handler-fn message
+                                   (fn []
+                                     ;; evict dedup-cache when done-fn is called
+                                     (swap! deduplication-cache #(cache/evict % message-deduplication-id))
+                                     (log/debugf "Evicting message-deduplication-id [%s] from cache."
+                                                 message-deduplication-id)
+                                     (done-fn))))
+
+                     ;; Case 3.
+                     (and (not deduplication-time-period)
+                          (not auto-delete))
+                     (handler-fn message done-fn)
+
+                     ;; Case 4.
+                     (and deduplication-time-period
+                          auto-delete)
+                     (do (swap! deduplication-cache #(cache/miss % message-deduplication-id true))
+                         (handler-fn message))
+
+                     ;; Case 5.
+                     (and (not deduplication-time-period)
+                          auto-delete)
+                     (handler-fn message)))
+
+                 (catch Throwable t
+                   (log/error t "SQS handler function threw an error")))
+               (recur))))))
      stop-fn))
+
   ([sqs-config queue-url handler-fn]
    (handle-queue sqs-config queue-url handler-fn {})))
 
