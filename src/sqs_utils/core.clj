@@ -223,9 +223,18 @@
       visibility-timeout  - how long (in seconds) a message can go unacknowledged
                             before delivery is retried. (defaults: 60)
 
-      deduplication-time-period - how long (in seconds) are messages deduplicated
-                                  if a new message arrives while the previous one
-                                  is still processing.
+      deduplication-time-period - How long (in seconds) are messages deduplicated.
+                                  This is an internal implementation that goes
+                                  beyond the AWS 5-min window deduplication limit.
+                                  However, it is a simplistic in-memory implementation
+                                  that do not persist incoming deduplication-ids.
+                                  Moreover, there is a difference on how this works
+                                  depending on 'auto-delete' flag. If 'auto-delete'
+                                  is enabled, then this deduplication-time-period
+                                  is fixed. But if 'auto-delete' is disabled, then
+                                  the deduplication-id cache is cleared when a
+                                  message's done function is called. Lastly, this
+                                  can only be turned on for FIFO queues.
 
       maximum-messages    - the maximum number of messages to be delivered as
                             a result of a single poll of SQS.
