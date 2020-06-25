@@ -77,6 +77,20 @@ The latest release version of sqs-utils is hosted on [Clojars](https://clojars.o
 
 [![Current Version](https://clojars.org/motiva/sqs-utils/latest-version.svg)](https://clojars.org/motiva/sqs-utils)
 
+## Development
+
+Spin up a localhost SQS server in Docker Compose,
+
+```
+$ docker-compose up -d sqs
+```
+
+And then run the test suites,
+
+```
+$ lein test
+```
+
 ## License
 
 The MIT License (MIT)
