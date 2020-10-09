@@ -1,13 +1,19 @@
 (ns sqs-utils.impl
   (:require [clj-sqs-extended.aws.sqs :as sqs]
-            [cheshire.core :as json]
-            [clojure.core.async :refer [<!! <! >! go-loop chan]]))
+            [clojure.core.async :refer [<! >! go-loop chan]]))
 
 ;; basics
 
-(defn sqs-ext-config [sqs-config]
-  ;; TODO
-  {})
+(defn sqs-ext-config [{access-key   :access-key
+                       secret-key   :secret-key
+                       sqs-endpoint :endpoint
+                       region       :region}]
+  {:access-key    access-key
+  :secret-key     secret-key
+  :s3-endpoint    nil ;; TODO
+  :s3-bucket-name nil
+  :sqs-endpoint   sqs-endpoint
+  :region         region})
 
 (defn sqs-ext-client [sqs-config]
   (-> sqs-config
