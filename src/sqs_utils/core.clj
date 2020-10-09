@@ -12,9 +12,10 @@
 
 (defn receive-one!
   [sqs-config queue-url]
-  (let [{:keys [body] :as message}
-        (<!! (impl/receive! sqs-config queue-url {:maximum 1}))]
+  (let [receiving-chan             (impl/receive! sqs-config queue-url {:maximum 1})
+        {:keys [body] :as message} (<!! receiving-chan)]
     (impl/processed! sqs-config queue-url message)
+    (async/close! receiving-chan)
     body))
 
 (defn receive-loop!
