@@ -245,3 +245,29 @@
       (testing "for unwrapped java exceptions"
         (run-one-test (NoSuchMethodError. "test message"))
         (run-one-test (Exception. "test message"))))))
+
+(deftest multiple-instances-of-receive-loop-test
+  (with-queue
+    (let [creds   (sqs-config)
+          message {:testing 3}
+
+          n       10
+          c       (chan)
+
+          stop-fns (doall
+                    (for [_ (range n)]
+                      (su/receive-loop!
+                        creds
+                        @test-queue-url
+                        c)))]
+
+      (is (= n (count stop-fns)))
+
+      (is (su/send-message creds @test-queue-url message))
+      (is (= message (:message (<!! c))))
+
+      ;; teardown
+      (doseq [stop-fn stop-fns]
+        (stop-fn))
+      (close! c))))
+
