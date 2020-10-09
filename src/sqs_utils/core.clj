@@ -14,7 +14,7 @@
   [sqs-config queue-url]
   (let [{:keys [body] :as message}
         (<!! (impl/receive! sqs-config queue-url {:maximum 1}))]
-    (<!! (impl/processed! sqs-config queue-url message))
+    (impl/processed! sqs-config queue-url message)
     body))
 
 (defn receive-loop!
@@ -139,7 +139,7 @@
 
                ;; it's a well formed actionable message
                :else
-               (let [done-fn #(<!! (impl/processed! sqs-config queue-url message))
+               (let [done-fn #(impl/processed! sqs-config queue-url message)
                      msg     (cond-> {:message body}
                                (not auto-delete) (assoc :done-fn done-fn))]
                  (if body
@@ -190,7 +190,7 @@
     :as options
     :or {format :transit}}]
   {:pre [message-group-id]}
-  (impl/send-message! sqs-config queue-url payload options))
+  (impl/send-fifo-message! sqs-config queue-url payload options))
 
 ;; Controls ;;;;;;;;;;;;;;;;;
 
