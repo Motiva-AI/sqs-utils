@@ -1,26 +1,24 @@
 (ns sqs-utils.impl
-  (:require [fink-nottle.sqs.channeled :as sqs.channeled]
-            [fink-nottle.sqs.tagged :as sqs.tagged]
-            [fink-nottle.sqs :as sqs]
-            [sqs-utils.serde :as serde]
-            [cheshire.core :as json]
-            [clojure.core.async :refer [<!! <! >! go-loop chan]]))
-
-;; auto ser/de transit messages
-
-(defmethod sqs.tagged/message-in  :transit [_ body]
-  (serde/transit-read body))
-(defmethod sqs.tagged/message-out :transit [_ body]
-  (serde/transit-write body))
-
-;; similarly json
-
-(defmethod sqs.tagged/message-in :json [_ body]
-  (json/parse-string body true))
-(defmethod sqs.tagged/message-out :json [_ body]
-  (json/generate-string body))
+  (:require [clj-sqs-extended.aws.sqs :as sqs]
+            [clojure.core.async :refer [<! >! go-loop chan]]))
 
 ;; basics
+
+(defn sqs-ext-config [{access-key   :access-key
+                       secret-key   :secret-key
+                       sqs-endpoint :endpoint
+                       region       :region}]
+  {:access-key    access-key
+  :secret-key     secret-key
+  :s3-endpoint    nil ;; TODO
+  :s3-bucket-name nil
+  :sqs-endpoint   sqs-endpoint
+  :region         region})
+
+(defn sqs-ext-client [sqs-config]
+  (-> sqs-config
+      (sqs-ext-config)
+      (sqs/sqs-ext-client)))
 
 (defn- multiplex
   [chs]
@@ -38,30 +36,40 @@
   (let [opts (merge {:maximum 10 :wait-seconds 20} opts)
         n (or (first n) 1)]
     (if (= 1 n)
-      (sqs.channeled/receive! sqs-config queue-url opts)
+      (sqs/receive-to-channel (sqs-ext-client sqs-config) queue-url opts)
       (multiplex
         (loop [chs [] n n]
           (if (= n 0)
             chs
-            (let [ch (sqs.channeled/receive! sqs-config queue-url opts)]
+            (let [ch (sqs/receive-to-channel (sqs-ext-client sqs-config) queue-url opts)]
               (recur (conj chs ch) (dec n)))))))))
 
 (defn processed!
   [sqs-config queue-url message]
-  (sqs/processed! sqs-config queue-url message))
+  (sqs/delete-message! (sqs-ext-client sqs-config) queue-url message))
 
 (defn send-message!
-  [sqs-config queue-url payload {:keys [message-group-id
-                                        deduplication-id
-                                        format]
-                                 :or {format :transit}}]
-  (let [resp (<!! (sqs/send-message!
-                    sqs-config
-                    queue-url
-                    (cond-> {:body payload :fink-nottle/tag format}
-                      message-group-id (assoc :message-group-id (str message-group-id))
-                      deduplication-id (assoc :message-deduplication-id (str deduplication-id)))))]
-    ;; sqs/send-message! returns Exceptions into the channel
-    (if (instance? Exception resp)
-      (throw resp)
-      resp)))
+  [sqs-config
+   queue-url
+   payload
+   {:keys [format]
+    :or {format :transit}
+    :as options}]
+  (sqs/send-message (sqs-ext-client sqs-config) queue-url payload options))
+
+(defn send-fifo-message!
+  [sqs-config
+   queue-url
+   payload
+   {:keys [message-group-id
+           deduplication-id
+           format]
+    :or {format :transit}
+    :as options}]
+  (sqs/send-fifo-message
+    (sqs-ext-client sqs-config)
+    queue-url
+    payload
+    message-group-id
+    options))
+

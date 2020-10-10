@@ -12,9 +12,10 @@
 
 (defn receive-one!
   [sqs-config queue-url]
-  (let [{:keys [body] :as message}
-        (<!! (impl/receive! sqs-config queue-url {:maximum 1}))]
-    (<!! (impl/processed! sqs-config queue-url message))
+  (let [receiving-chan             (impl/receive! sqs-config queue-url {:maximum 1})
+        {:keys [body] :as message} (<!! receiving-chan)]
+    (impl/processed! sqs-config queue-url message)
+    (async/close! receiving-chan)
     body))
 
 (defn receive-loop!
@@ -32,10 +33,7 @@
 
       auto-delete           - boolean, if true, immediately delete the message,
                               if false, forward a `done` function and leave the
-                              message intact.
-
-      visibility-timeout    - how long (in seconds) a message can go unacknowledged
-                              before delivery is retried.
+                              message intact. (default: true)
 
       restart-delay-seconds - how long (in seconds) to wait before attempting to
                               restart the consumer loop.
@@ -45,28 +43,21 @@
 
       num-consumers         - the number of concurrent long-polls to run
 
-  auto-delete defaults to true, visibility-timeout defaults to 60 seconds.
-
   Returns a kill function - call the function to terminate the loop."
   ([sqs-config queue-url out-chan]
    (receive-loop! sqs-config queue-url out-chan {}))
 
   ([sqs-config queue-url out-chan
     {:keys [auto-delete
-            visibility-timeout
             restart-delay-seconds
             maximum-messages
             num-consumers]
      :or   {auto-delete           true
-            visibility-timeout    60
             restart-delay-seconds 1
             maximum-messages      10
             num-consumers         1}
      :as   opts}]
-   (let [receive-to-chan #(impl/receive! sqs-config queue-url
-                                         {:visibility-timeout visibility-timeout
-                                          :maximum maximum-messages}
-                                         num-consumers)
+   (let [receive-to-chan #(impl/receive! sqs-config queue-url opts num-consumers)
          loop-state (atom {:messages (receive-to-chan)
                            :running true
                            :stats   {:count         0
@@ -125,10 +116,10 @@
 
                ;; we have a message, is it an error?
                (instance? Throwable message)
-               ;; fink-nottle closes the messages channel on error, so we must
+               ;; clj-sqs-ext closes the messages channel on error, so we must
                ;; restart
                (let [{:keys [this-pass-started-at] :as stats} (:stats @loop-state)]
-                 (log/warn message "Received an error from fink-nottle"
+                 (log/warn message "Received an error from clj-sqs-ext"
                            (assoc stats :last-wait-duration (secs-between this-pass-started-at
                                                                           (t/now))))
                  ;; Adding a restart delay so that this doesn't go into an
@@ -139,7 +130,7 @@
 
                ;; it's a well formed actionable message
                :else
-               (let [done-fn #(<!! (impl/processed! sqs-config queue-url message))
+               (let [done-fn #(impl/processed! sqs-config queue-url message)
                      msg     (cond-> {:message body}
                                (not auto-delete) (assoc :done-fn done-fn))]
                  (if body
@@ -150,7 +141,7 @@
                    (done-fn)))))
 
            (catch Exception e
-             ;; this shouldn't happen, and it isn't from fink-nottle, so raise
+             ;; this shouldn't happen, and it isn't from clj-sqs-ext, so raise
              ;; an alarm
              (log/errorf e "Failed receiving message for %s" (:stats @loop-state))))
 
@@ -190,7 +181,7 @@
     :as options
     :or {format :transit}}]
   {:pre [message-group-id]}
-  (impl/send-message! sqs-config queue-url payload options))
+  (impl/send-fifo-message! sqs-config queue-url payload options))
 
 ;; Controls ;;;;;;;;;;;;;;;;;
 
@@ -214,40 +205,30 @@
                             if false, forward a `done` function and leave the
                             message intact. (defaults: true)
 
-      visibility-timeout  - how long (in seconds) a message can go unacknowledged
-                            before delivery is retried. (defaults: 60)
-
       maximum-messages    - the maximum number of messages to be delivered as
                             a result of a single poll of SQS.
 
       num-consumers       - the number of polling requests to run concurrently.
                             (defaults: 1)
 
-  See http://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html
-  for more information about visibility timeout.
-
   Returns:
   a kill function - call the function to terminate the loop."
   ([sqs-config queue-url handler-fn
     {:keys [num-handler-threads
             auto-delete
-            visibility-timeout
             maximum-messages
             num-consumers]
      :or   {num-handler-threads 4
             auto-delete         true
-            visibility-timeout  60
             maximum-messages    10
-            num-consumers       1}
-     :as   opts}]
-   (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s, visibility-timeout: %d"
-              queue-url num-handler-threads auto-delete visibility-timeout)
+            num-consumers       1}}]
+   (log/infof "Starting receive loop for %s with num-handler-threads: %d, auto-delete: %s."
+              queue-url num-handler-threads auto-delete)
    (let [receive-chan (chan)
          stop-fn      (receive-loop! sqs-config
                                      queue-url
                                      receive-chan
                                      {:auto-delete        auto-delete
-                                      :visibility-timeout visibility-timeout
                                       :maximum-messages   maximum-messages
                                       :num-consumers      num-consumers})]
      (dotimes [_ num-handler-threads]

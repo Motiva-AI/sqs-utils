@@ -7,7 +7,7 @@
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.clojure/core.async "1.3.610"]
                  [org.clojure/core.cache "1.0.207"]
-                 [io.nervous/fink-nottle "0.4.7"]
+                 [motiva/clj-sqs-extended "0.2.0-SNAPSHOT"]
                  ;; Cognitect Labs' aws-api project
                  ;; [com.cognitect.aws/api "0.8.289"]
                  ;; [com.cognitect.aws/endpoints "1.1.11.526"]

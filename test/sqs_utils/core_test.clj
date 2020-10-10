@@ -1,10 +1,11 @@
 (ns sqs-utils.core-test
   (:require [clojure.test :refer :all]
-            [clojure.core.async :as async :refer [chan <!! >!! close! alt!!]]
-            clojure.core.async.impl.protocols
+            [clojure.core.async :as async :refer [chan <!! >!! close! alt!! alts!!]]
+            [clojure.core.async.impl.protocols]
+            [clj-sqs-extended.aws.sqs :as sqs]
             [clj-time.core :as t]
-            [fink-nottle.sqs.channeled :as sqs.channeled]
             [sqs-utils.core :as su]
+            [sqs-utils.impl]
             [sqs-utils.test-utils :as test-utils]
             [environ.core :refer [env]]
             [wait-for.core :refer [wait-for]]
@@ -43,16 +44,16 @@
       (let [c (chan)
             creds (sqs-config)]
         (is (su/send-message creds @test-queue-url {:testing 2} {:format format}))
-        (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
-          (is (fn? kill-fn))
+        (let [stop-fn (su/receive-loop! creds @test-queue-url c)]
+          (is (fn? stop-fn))
           (is (= {:testing 2}
                  (:message (<!! c))))
           (is (su/send-message creds @test-queue-url {:testing 1}))
           (is (= {:testing 1}
                  (:message (<!! c))))
-          (kill-fn))))))
+          (stop-fn))))))
 
-(deftest receipt-handle-present-when-not-auto-deleting
+(deftest done-fn-present-when-not-auto-deleting
   (doseq [format [:json :transit]]
     (with-queue
       (let [creds (sqs-config)]
@@ -75,53 +76,65 @@
 
 (deftest client-acknowledgement-works
   (doseq [format [:json :transit]]
-    (with-queue
-      (let [creds (sqs-config)]
-        (testing "acknowledged messages don't get resent"
-          (let [c       (chan)
-                stop-fn (su/receive-loop! creds @test-queue-url c {:auto-delete false
-                                                                   :visibility-timeout 5})]
-            (is (su/send-message creds @test-queue-url {:testing 6} {:format format}))
-            (let [{:keys [message done-fn]} (<!! c)]
-              (is (= {:testing 6} message))
-              (is (some? done-fn))
-              ;; call the function, then wait for it not to show up :P
-              (done-fn)
-              (is (alt!!
-                    c false
-                    (async/timeout 10000) true)))
-            (stop-fn)))
-        (testing "unacknowledged messages get resent"
-          (let [c       (chan)
-                stop-fn (su/receive-loop! creds @test-queue-url c {:auto-delete false
-                                                                   :visibility-timeout 5})]
-            (is (su/send-message creds @test-queue-url {:testing 7} {:format format}))
-            (let [{:keys [message done-fn]} (<!! c)]
-              (is (= {:testing 7} message))
-              (is (some? done-fn))
-              ;; don't call it, wait for the next one
-              (wait-for
-                #(alt!!
-                   c ([{:keys [message done-fn]} _]
-                      (= message {:testing 7}))
-                   (async/timeout 500) false)
-                :timeout 30))
-            (stop-fn)))))))
+    (let [visibility-timeout 1
+          test-queue-url     (atom nil)
+          creds              (sqs-config)]
+      ;; setup a test queue with specified visibility-timeout
+      (reset! test-queue-url (sqs/create-standard-queue!
+                               (sqs-utils.impl/sqs-ext-client creds)
+                               (test-utils/random-queue-name)
+                               {:visibility-timeout-in-seconds visibility-timeout}))
+
+      (testing "acknowledged messages don't get resent"
+        (let [c       (chan)
+              stop-fn (su/receive-loop! creds @test-queue-url c {:auto-delete false})]
+          (is (su/send-message creds @test-queue-url {:testing 6} {:format format}))
+          (let [{:keys [message done-fn]} (<!! c)]
+            (is (= {:testing 6} message))
+            (is (some? done-fn))
+            ;; call the function, then wait for it not to show up :P
+            (done-fn)
+            (is (alt!!
+                  c                     false
+                  (async/timeout
+                    (* (inc visibility-timeout)
+                       1000))           true)))
+          (stop-fn)))
+
+      (testing "unacknowledged messages get resent"
+        (let [c       (chan)
+              stop-fn (su/receive-loop! creds @test-queue-url c {:auto-delete false})]
+          (is (su/send-message creds @test-queue-url {:testing 7} {:format format}))
+          (let [{:keys [message done-fn]} (<!! c)]
+            (is (= {:testing 7} message))
+            (is (some? done-fn))
+            ;; don't call it, wait for the next one
+            (wait-for
+              #(alt!!
+                 c ([{:keys [message done-fn]} _]
+                    (= message {:testing 7}))
+                 (async/timeout 500) false)
+              :timeout 5))
+          (stop-fn)))
+
+      ;; teardown
+      (test-utils/delete-queue! creds @test-queue-url))))
 
 (deftest send-message-test
   (doseq [format [:json :transit]]
     (with-queue
       (let [{:keys [endpoint] :as creds} (sqs-config)]
         (testing "Success case"
-          (is (= [:id :body-md5]
-                 (keys (su/send-message creds @test-queue-url {:testing 28} {:format format})))))
+          (is (string? (su/send-message creds @test-queue-url {:testing 28} {:format format}))))
 
         (testing "Fail case"
-          (is (thrown? clojure.lang.ExceptionInfo
-                       (su/send-message creds
-                                        (str endpoint "/queue/non-existing")
-                                        {:testing 1}
-                                        {:format format}))))))))
+          (is (thrown-with-msg?
+                Exception
+                #"NonExistentQueue"
+                (su/send-message creds
+                                 (str endpoint "/queue/non-existing")
+                                 {:testing 1}
+                                 {:format format}))))))))
 
 (deftest send-fifo-message-test
   (doseq [format [:json :transit]]
@@ -148,11 +161,11 @@
       (let [c (chan)
             creds (sqs-config)]
         (is (su/send-message creds @test-queue-url {:testing 4} {:format format}))
-        (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
-          (is (some? kill-fn))
+        (let [stop-fn (su/receive-loop! creds @test-queue-url c)]
+          (is (some? stop-fn))
           (is (= {:testing 4} (:message (<!! c))))
           ;; terminate the loop, close the channel
-          (kill-fn)
+          (stop-fn)
           ;; send a message to the queue, which still exists
           (su/send-message creds @test-queue-url {:testing 5} {:format format})
           ;; closed channel should return nil - TODO some other way to verify?
@@ -194,57 +207,49 @@
 
         (stop-fn)))))
 
-(deftest fink-nottle-error-handling-works
+(deftest receiving-error-handling-works
   (with-queue
-    (letfn [(run-one-test [throwable]
-              (let [c              (chan)
-                    messages-chan1 (chan)
-                    creds          (sqs-config)]
-                (bond/with-stub! [[sqs.channeled/receive! (constantly messages-chan1)]]
-                  (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
-                    (try
-                      (is (fn? kill-fn))
-                      (>!! messages-chan1 {:body :hello})
-                      (is (= :hello (:message (<!! c))))
-                      (is (= 1 (-> sqs.channeled/receive! bond/calls count)))
-                      ;; set up the next channel to return when receive is called
-                      (let [messages-chan2 (chan)]
-                        (bond/with-stub! [[sqs.channeled/receive! (constantly messages-chan2)]]
-                          ;; ensure it hasn't been called yet
-                          (is (= 0 (-> sqs.channeled/receive! bond/calls count)))
-                          ;; fire off an error
-                          (>!! messages-chan1 (ex-info "test message" {}))
-                          ;; receive should be called again
-                          (wait-for #(= 1 (-> sqs.channeled/receive! bond/calls count)))
-                          ;; first channel should be closed
-                          (is (clojure.core.async.impl.protocols/closed? messages-chan1))
-                          ;; second channel should be ok
-                          (is (not (clojure.core.async.impl.protocols/closed? messages-chan2)))
-                          ;; out-chan should be ok
-                          (is (not (clojure.core.async.impl.protocols/closed? c)))
-                          ;; everything should still work
-                          (>!! messages-chan2 {:body :still-works})
-                          (is (= :still-works (:message (<!! c))))
+    (let [c              (chan)
+          messages-chan1 (chan)
+          creds          (sqs-config)]
+      (bond/with-stub! [[sqs/receive-to-channel (constantly messages-chan1)]]
+        (let [stop-fn (su/receive-loop! creds @test-queue-url c)]
+          (try
+            (is (fn? stop-fn))
+            (>!! messages-chan1 {:body :hello})
+            (is (= :hello (:message (<!! c))))
+            (is (= 1 (-> sqs/receive-to-channel bond/calls count)))
+            ;; set up the next channel to return when receive is called
+            (let [messages-chan2 (chan)]
+              (bond/with-stub! [[sqs/receive-to-channel (constantly messages-chan2)]]
+                ;; ensure it hasn't been called yet
+                (is (= 0 (-> sqs/receive-to-channel bond/calls count)))
+                ;; fire off an error
+                (>!! messages-chan1 (ex-info "fail test message" {}))
+                ;; receive should be called again
+                (wait-for #(= 1 (-> sqs/receive-to-channel bond/calls count)))
+                ;; first channel should be closed
+                (is (clojure.core.async.impl.protocols/closed? messages-chan1))
+                ;; second channel should be ok
+                (is (not (clojure.core.async.impl.protocols/closed? messages-chan2)))
+                ;; out-chan should be ok
+                (is (not (clojure.core.async.impl.protocols/closed? c)))
+                ;; everything should still work
+                (>!! messages-chan2 {:body :still-works})
+                (is (= :still-works (:message (<!! c))))
 
-                          ;; terminate the loop
-                          (let [stats (kill-fn)]
-                            (is (= 1 (:restart-count stats)))
-                            (is (instance? org.joda.time.DateTime (:restarted-at stats)))
-                            (is (= 3 (:count stats)))
-                            ;; everything should be closed
-                            (is (clojure.core.async.impl.protocols/closed? messages-chan1))
-                            (is (clojure.core.async.impl.protocols/closed? messages-chan2))
-                            (is (clojure.core.async.impl.protocols/closed? c)))))
-                      (catch Throwable t
-                        (kill-fn)
-                        (throw t)))))))]
-
-      (testing "for ex-info wrapped errors"
-        (run-one-test (ex-info "test message" {})))
-
-      (testing "for unwrapped java exceptions"
-        (run-one-test (NoSuchMethodError. "test message"))
-        (run-one-test (Exception. "test message"))))))
+                ;; terminate the loop
+                (let [stats (stop-fn)]
+                  (is (= 1 (:restart-count stats)))
+                  (is (instance? org.joda.time.DateTime (:restarted-at stats)))
+                  (is (= 3 (:count stats)))
+                  ;; everything should be closed
+                  (is (clojure.core.async.impl.protocols/closed? messages-chan1))
+                  (is (clojure.core.async.impl.protocols/closed? messages-chan2))
+                  (is (clojure.core.async.impl.protocols/closed? c)))))
+            (catch Throwable t
+              (stop-fn)
+              (throw t))))))))
 
 (deftest multiple-instances-of-receive-loop-test
   (with-queue
@@ -267,6 +272,7 @@
       (is (= message (:message (<!! c))))
 
       ;; teardown
+      (println  "tearing down...")
       (doseq [stop-fn stop-fns]
         (stop-fn))
       (close! c))))
