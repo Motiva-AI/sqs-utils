@@ -13,7 +13,7 @@ Create a worker for consuming an SQS queue:
 sqs-utils.core> (doc handle-queue)
 -------------------------
 sqs-utils.core/handle-queue
-([sqs-config queue-url handler-fn {:keys [num-handler-threads auto-delete visibility-timeout], :or {num-handler-threads 4, auto-delete true, visibility-timeout 60}, :as opts}] [sqs-config queue-url handler-fn])
+([sqs-config queue-url handler-fn {:keys [num-handler-threads auto-delete], :or {num-handler-threads 4, auto-delete true}, :as opts}] [sqs-config queue-url handler-fn])
   Set up a loop that listens to a queue and process incoming messages.
 
    Arguments:
@@ -32,12 +32,6 @@ sqs-utils.core/handle-queue
       auto-delete        - boolean, if true, immediately delete the message,
                            if false, forward a `done` function and leave the
                            message intact. (defaults: true)
-
-      visibility-timeout - how long (in seconds) a message can go unacknowledged
-                           before delivery is retried. (defaults: 60)
-
-  See http://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html
-  for more information about visibility timeout.
 
   Returns:
   a kill function - call the function to terminate the loop.
