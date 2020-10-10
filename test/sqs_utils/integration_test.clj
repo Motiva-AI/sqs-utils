@@ -90,12 +90,3 @@
         (let  [stats  (stop-fn)]
           (is  (empty?  (:restarts stats))))))))
 
-(deftest ^:integration roundtrip-datetime-test
-  ;; this one is only relevant for transit, since JSON does not have a date/time
-  ;; related data type, just strings.
-  (let [coll {:data [1 2 3]
-              :uuid (str (uuid))
-              :timestamp (t/now)}]
-    (is (sqs-utils/send-message (sqs-config) standard-queue-url coll))
-    (is (= coll (sqs-utils/receive-one! (sqs-config) standard-queue-url)))))
-
