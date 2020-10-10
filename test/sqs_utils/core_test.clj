@@ -125,15 +125,16 @@
     (with-queue
       (let [{:keys [endpoint] :as creds} (sqs-config)]
         (testing "Success case"
-          (is (= [:id :body-md5]
-                 (keys (su/send-message creds @test-queue-url {:testing 28} {:format format})))))
+          (is (string? (su/send-message creds @test-queue-url {:testing 28} {:format format}))))
 
         (testing "Fail case"
-          (is (thrown? clojure.lang.ExceptionInfo
-                       (su/send-message creds
-                                        (str endpoint "/queue/non-existing")
-                                        {:testing 1}
-                                        {:format format}))))))))
+          (is (thrown-with-msg?
+                Exception
+                #"NonExistentQueue"
+                (su/send-message creds
+                                 (str endpoint "/queue/non-existing")
+                                 {:testing 1}
+                                 {:format format}))))))))
 
 (deftest send-fifo-message-test
   (doseq [format [:json :transit]]
@@ -160,11 +161,11 @@
       (let [c (chan)
             creds (sqs-config)]
         (is (su/send-message creds @test-queue-url {:testing 4} {:format format}))
-        (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
-          (is (some? kill-fn))
+        (let [stop-fn (su/receive-loop! creds @test-queue-url c)]
+          (is (some? stop-fn))
           (is (= {:testing 4} (:message (<!! c))))
           ;; terminate the loop, close the channel
-          (kill-fn)
+          (stop-fn)
           ;; send a message to the queue, which still exists
           (su/send-message creds @test-queue-url {:testing 5} {:format format})
           ;; closed channel should return nil - TODO some other way to verify?
@@ -206,57 +207,49 @@
 
         (stop-fn)))))
 
-(deftest fink-nottle-error-handling-works
+(deftest receiving-error-handling-works
   (with-queue
-    (letfn [(run-one-test [throwable]
-              (let [c              (chan)
-                    messages-chan1 (chan)
-                    creds          (sqs-config)]
-                (bond/with-stub! [[sqs/receive-to-channel (constantly messages-chan1)]]
-                  (let [kill-fn (su/receive-loop! creds @test-queue-url c)]
-                    (try
-                      (is (fn? kill-fn))
-                      (>!! messages-chan1 {:body :hello})
-                      (is (= :hello (:message (<!! c))))
-                      (is (= 1 (-> sqs/receive-to-channel bond/calls count)))
-                      ;; set up the next channel to return when receive is called
-                      (let [messages-chan2 (chan)]
-                        (bond/with-stub! [[sqs/receive-to-channel (constantly messages-chan2)]]
-                          ;; ensure it hasn't been called yet
-                          (is (= 0 (-> sqs/receive-to-channel bond/calls count)))
-                          ;; fire off an error
-                          (>!! messages-chan1 (ex-info "test message" {}))
-                          ;; receive should be called again
-                          (wait-for #(= 1 (-> sqs/receive-to-channel bond/calls count)))
-                          ;; first channel should be closed
-                          (is (clojure.core.async.impl.protocols/closed? messages-chan1))
-                          ;; second channel should be ok
-                          (is (not (clojure.core.async.impl.protocols/closed? messages-chan2)))
-                          ;; out-chan should be ok
-                          (is (not (clojure.core.async.impl.protocols/closed? c)))
-                          ;; everything should still work
-                          (>!! messages-chan2 {:body :still-works})
-                          (is (= :still-works (:message (<!! c))))
+    (let [c              (chan)
+          messages-chan1 (chan)
+          creds          (sqs-config)]
+      (bond/with-stub! [[sqs/receive-to-channel (constantly messages-chan1)]]
+        (let [stop-fn (su/receive-loop! creds @test-queue-url c)]
+          (try
+            (is (fn? stop-fn))
+            (>!! messages-chan1 {:body :hello})
+            (is (= :hello (:message (<!! c))))
+            (is (= 1 (-> sqs/receive-to-channel bond/calls count)))
+            ;; set up the next channel to return when receive is called
+            (let [messages-chan2 (chan)]
+              (bond/with-stub! [[sqs/receive-to-channel (constantly messages-chan2)]]
+                ;; ensure it hasn't been called yet
+                (is (= 0 (-> sqs/receive-to-channel bond/calls count)))
+                ;; fire off an error
+                (>!! messages-chan1 (ex-info "fail test message" {}))
+                ;; receive should be called again
+                (wait-for #(= 1 (-> sqs/receive-to-channel bond/calls count)))
+                ;; first channel should be closed
+                (is (clojure.core.async.impl.protocols/closed? messages-chan1))
+                ;; second channel should be ok
+                (is (not (clojure.core.async.impl.protocols/closed? messages-chan2)))
+                ;; out-chan should be ok
+                (is (not (clojure.core.async.impl.protocols/closed? c)))
+                ;; everything should still work
+                (>!! messages-chan2 {:body :still-works})
+                (is (= :still-works (:message (<!! c))))
 
-                          ;; terminate the loop
-                          (let [stats (kill-fn)]
-                            (is (= 1 (:restart-count stats)))
-                            (is (instance? org.joda.time.DateTime (:restarted-at stats)))
-                            (is (= 3 (:count stats)))
-                            ;; everything should be closed
-                            (is (clojure.core.async.impl.protocols/closed? messages-chan1))
-                            (is (clojure.core.async.impl.protocols/closed? messages-chan2))
-                            (is (clojure.core.async.impl.protocols/closed? c)))))
-                      (catch Throwable t
-                        (kill-fn)
-                        (throw t)))))))]
-
-      (testing "for ex-info wrapped errors"
-        (run-one-test (ex-info "test message" {})))
-
-      (testing "for unwrapped java exceptions"
-        (run-one-test (NoSuchMethodError. "test message"))
-        (run-one-test (Exception. "test message"))))))
+                ;; terminate the loop
+                (let [stats (stop-fn)]
+                  (is (= 1 (:restart-count stats)))
+                  (is (instance? org.joda.time.DateTime (:restarted-at stats)))
+                  (is (= 3 (:count stats)))
+                  ;; everything should be closed
+                  (is (clojure.core.async.impl.protocols/closed? messages-chan1))
+                  (is (clojure.core.async.impl.protocols/closed? messages-chan2))
+                  (is (clojure.core.async.impl.protocols/closed? c)))))
+            (catch Throwable t
+              (stop-fn)
+              (throw t))))))))
 
 (deftest multiple-instances-of-receive-loop-test
   (with-queue
@@ -279,6 +272,7 @@
       (is (= message (:message (<!! c))))
 
       ;; teardown
+      (println  "tearing down...")
       (doseq [stop-fn stop-fns]
         (stop-fn))
       (close! c))))
