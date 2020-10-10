@@ -116,10 +116,10 @@
 
                ;; we have a message, is it an error?
                (instance? Throwable message)
-               ;; fink-nottle closes the messages channel on error, so we must
+               ;; clj-sqs-ext closes the messages channel on error, so we must
                ;; restart
                (let [{:keys [this-pass-started-at] :as stats} (:stats @loop-state)]
-                 (log/warn message "Received an error from fink-nottle"
+                 (log/warn message "Received an error from clj-sqs-ext"
                            (assoc stats :last-wait-duration (secs-between this-pass-started-at
                                                                           (t/now))))
                  ;; Adding a restart delay so that this doesn't go into an
@@ -141,7 +141,7 @@
                    (done-fn)))))
 
            (catch Exception e
-             ;; this shouldn't happen, and it isn't from fink-nottle, so raise
+             ;; this shouldn't happen, and it isn't from clj-sqs-ext, so raise
              ;; an alarm
              (log/errorf e "Failed receiving message for %s" (:stats @loop-state))))
 
