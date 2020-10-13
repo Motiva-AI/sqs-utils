@@ -1,4 +1,4 @@
-(defproject motiva/sqs-utils "0.10.0"
+(defproject motiva/sqs-utils "0.10.1"
   :description "Higher level SQS utilities for use in Motiva products"
   :url "https://github.com/Motiva-AI/sqs-utils"
   :license {:name "MIT License"
@@ -7,7 +7,7 @@
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.clojure/core.async "1.3.610"]
                  [org.clojure/core.cache "1.0.207"]
-                 [motiva/clj-sqs-extended "0.2.0"]
+                 [motiva/clj-sqs-extended "0.2.1"]
                  [org.clojure/tools.logging "1.1.0"]
                  [clj-time "0.15.2"]
                  [cheshire "5.10.0"]                    ;; json
